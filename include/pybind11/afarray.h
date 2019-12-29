@@ -1,6 +1,6 @@
 #pragma once
 
-#include "numpy.h"
+#include "pybind11/numpy.h"
 
 #if defined(__INTEL_COMPILER)
 #  pragma warning(disable: 1682) // implicit conversion of a 64-bit integral type to a smaller integral type (potential portability problem)
@@ -32,43 +32,42 @@ NAMESPACE_BEGIN(PYBIND11_NAMESPACE)
 NAMESPACE_BEGIN(detail)
 
 af::dtype np_dtype2af_dtype(const dtype& src_dtype) {
-  switch(src_dtype.attr("name").cast<std::string>()) {
-    case "float64":
-      return af::dtype::f64;
-    case "float32":
-      return af::dtype::f32;
-    // float16 is not supported in arrayfire <= 3.6.4
-    // cf. https://github.com/arrayfire/arrayfire/issues/1673
-    //case "float16":
-    //  return af::dtype::f16;
-    case "int64":
-      return af::dtype::s64;
-    case "uint64":
-      return af::dtype::u64;
-    case "int32":
-      return af::dtype::s32;
-    case "uint32":
-      return af::dtype::u32;
-    case "int16":
-      return af::dtype::s16;
-    case "uint16":
-      return af::dtype::u16;
-    // int8 is not supported in arrayfire <= 3.6.4
-    // cf. https://github.com/arrayfire/arrayfire/issues/1656
-    //case "int8":
-    //  return af::dtype::s8;
-    case "uint8":
-      return af::dtype::u8;
-    case "bool":
-      return af::dtype::b8;
-    // FIXME: not sure if they have save memory alignment for complex values
-    case "complex128":
-      return af::dtype::c64;
-    case "complex64":
-      return af::dtype::c32;
-    default:
-      throw std::invalid_argument("unsupported numpy.dtype");
-  }
+  const std::string dtype_str = src_dtype.attr("name").cast<std::string>();
+  if (dtype_str == "float64")
+    return af::dtype::f64;
+  else if (dtype_str == "float32")
+    return af::dtype::f32;
+  // float16 is not supported in arrayfire <= 3.6.4
+  // cf. https://github.com/arrayfire/arrayfire/issues/1673
+  //else if(dtype_str == "float16")
+  //  return af::dtype::f16;
+  else if (dtype_str == "int64")
+    return af::dtype::s64;
+  else if (dtype_str == "uint64")
+    return af::dtype::u64;
+  else if (dtype_str == "int32")
+    return af::dtype::s32;
+  else if (dtype_str == "uint32")
+    return af::dtype::u32;
+  else if (dtype_str == "int16")
+    return af::dtype::s16;
+  else if (dtype_str == "uint16")
+    return af::dtype::u16;
+  // int8 is not supported in arrayfire <= 3.6.4
+  // cf. https://github.com/arrayfire/arrayfire/issues/1656
+  //else if (dtype_str == "int8")
+  //  return af::dtype::s8;
+  else if (dtype_str == "uint8")
+    return af::dtype::u8;
+  else if (dtype_str == "bool")
+    return af::dtype::b8;
+  // FIXME: not sure if they have save memory alignment for complex values
+  else if (dtype_str == "complex128")
+    return af::dtype::c64;
+  else if (dtype_str == "complex64")
+    return af::dtype::c32;
+  else
+    throw std::invalid_argument("unsupported numpy.dtype");
 }
 
 dtype af_dtype2np_dtype(const af::dtype& src_dtype) {
@@ -111,7 +110,6 @@ dtype af_dtype2np_dtype(const af::dtype& src_dtype) {
   }
 }
 
-template <typename T>
 array afarray2ndarray(const af::array& src) {
   array host_data(af_dtype2np_dtype(src.type()), src.elements());
 
@@ -128,31 +126,30 @@ array afarray2ndarray(const af::array& src) {
 
 // type_caster for af::array
 template <> struct type_caster<af::array> {
-  namespace py = pybind11;
 
   PYBIND11_TYPE_CASTER(af::array, _("af::array"));
 
   bool load(handle src, bool convert) {
     using StorageIndex = int;  // FIXME: correct always?
     using Index = int;
-    py::object sparse_module = py::module::import("scipy.sparse");
-    py::object spmatrix = py::module::import("scipy.sparse.base.spmatrix");
+    object sparse_module = module::import("scipy.sparse");
+    object spmatrix = sparse_module.attr("spmatrix");
 
-    if (isinstance<py::array>(src)) { // numpy.ndarray
+    if (isinstance<array>(src)) { // numpy.ndarray
       // Coerce into an array, but don't do type conversion yet; the copy below handles it.
-      auto buf = py::array::ensure(src);
+      auto buf = array::ensure(src);
 
       if (!buf)
           return false;
 
       af::dim4 shape;
       for (int i = 0; i < buf.ndim(); ++i) {
-        shape[i] = buf.dims(buf.ndim() - i - 1);
+        shape[i] = buf.shape(buf.ndim() - i - 1);
       }
 
       af_array inArray = 0;
       af_err __err = af_create_array(&inArray, buf.data(), buf.ndim(), shape.get(),
-                                     np_dtype2af_dtype(src));
+                                     np_dtype2af_dtype(buf.dtype()));
       if(__err != AF_SUCCESS)
         return false;
 
@@ -160,11 +157,11 @@ template <> struct type_caster<af::array> {
     }
     else if (isinstance(src, spmatrix)) { // scipy.sparse.base.spmatrix
       // modules
-      py::object csr_matrix = sparse_module.attr("csr_matrix");
-      py::object csc_matrix = sparse_module.attr("csc_matrix");
-      py::object coo_matrix = sparse_module.attr("coo_matrix");
+      object csr_matrix = sparse_module.attr("csr_matrix");
+      object csc_matrix = sparse_module.attr("csc_matrix");
+      object coo_matrix = sparse_module.attr("coo_matrix");
 
-      py::object matrix_type;
+      object matrix_type;
       if (isinstance(src, csr_matrix))
         matrix_type = csr_matrix;
       else if (isinstance(src, csc_matrix))
@@ -174,7 +171,7 @@ template <> struct type_caster<af::array> {
       else
         return false;
 
-      auto obj = py::reinterpret_borrow<py::object>(src);
+      auto obj = reinterpret_borrow<object>(src);
       if (!obj.get_type().is(matrix_type)) {
         try {
           obj = matrix_type(obj);
@@ -183,38 +180,40 @@ template <> struct type_caster<af::array> {
         }
       }
 
-      auto values = py::array((py::object) obj.attr("data"));
-      auto shape = py::tuple((py::object) obj.attr("shape"));
+      auto values = array((object) obj.attr("data"));
+      auto shape = tuple((object) obj.attr("shape"));
       const Index nnz = obj.attr("nnz").cast<Index>();
-      py::array_t<StorageIndex> innerIndices;
-      py::array_t<StorageIndex> outerIndices;
+      array_t<StorageIndex> innerIndices;
+      array_t<StorageIndex> outerIndices;
       af::storage storage_type;
 
       if (isinstance(src, csr_matrix)) {
-        outerIndices = py::array_t<StorageIndex>((py::object) obj.attr("indptr"));
-        innerIndices = py::array_t<StorageIndex>((py::object) obj.attr("indices"));
+        outerIndices = array_t<StorageIndex>((object) obj.attr("indptr"));
+        innerIndices = array_t<StorageIndex>((object) obj.attr("indices"));
         storage_type = AF_STORAGE_CSR;
       }
       else if (isinstance(src, csc_matrix)) {
-        outerIndices = py::array_t<StorageIndex>((py::object) obj.attr("indices"));
-        innerIndices = py::array_t<StorageIndex>((py::object) obj.attr("indptr"));
+        outerIndices = array_t<StorageIndex>((object) obj.attr("indices"));
+        innerIndices = array_t<StorageIndex>((object) obj.attr("indptr"));
         storage_type = AF_STORAGE_CSC;
       }
       else if (isinstance(src, coo_matrix)) {
-        outerIndices = py::array_t<StorageIndex>((py::object) obj.attr("row"));
-        innerIndices = py::array_t<StorageIndex>((py::object) obj.attr("col"));
+        outerIndices = array_t<StorageIndex>((object) obj.attr("row"));
+        innerIndices = array_t<StorageIndex>((object) obj.attr("col"));
         storage_type = AF_STORAGE_COO;
       }
+      else
+        return false;
 
       if (!values || !innerIndices || !outerIndices)
         throw std::invalid_argument("got null values or indeices");
 
-      const auto dst_af_dtype = np_dtype2af_dtype(obj.attr("dtype"));
+      const auto dst_af_dtype = np_dtype2af_dtype(values.dtype());
 
       value = af::sparse(shape[0].cast<Index>(), shape[1].cast<Index>(),
-                         nnz, valuse.mutable_data(),
+                         nnz, values.mutable_data(),
                          outerIndices.mutable_data(), innerIndices.mutable_data(),
-                         dst_af_dtype, storage_type);
+                         dst_af_dtype, storage_type); // FIXME: values is undefined
     }
     else { // unsupported type
       return false;
@@ -225,7 +224,7 @@ template <> struct type_caster<af::array> {
 
   static handle cast(const af::array &src, return_value_policy /* policy */, handle /* parent */) {
     if (src.issparse()) { // sparse array
-      object sparse_module = py::module::import("scipy.sparse");
+      object sparse_module = module::import("scipy.sparse");
 
       array innerIndices;
       array outerIndices;
@@ -236,12 +235,12 @@ template <> struct type_caster<af::array> {
         case AF_STORAGE_CSR:
           matrix_type = sparse_module.attr("csr_matrix");
           innerIndices = afarray2ndarray(af::sparseGetColIdx(src));
-          outerIndices = afarray2ndarray(af::sparseGetRowIdx(src)); // FIXME: check
+          outerIndices = afarray2ndarray(af::sparseGetRowIdx(src));
           break;
         case AF_STORAGE_CSC:
           matrix_type = sparse_module.attr("csc_matrix");
-          innerIndices = afarray2ndarray(af::sparseGetColIdx(src));
-          outerIndices = afarray2ndarray(af::sparseGetRowIdx(src)); // FIXME: check
+          innerIndices = afarray2ndarray(af::sparseGetRowIdx(src));
+          outerIndices = afarray2ndarray(af::sparseGetColIdx(src));
           break;
         case AF_STORAGE_COO:
           matrix_type = sparse_module.attr("coo_matrix");
@@ -255,15 +254,17 @@ template <> struct type_caster<af::array> {
       return matrix_type(
         std::make_tuple(afarray2ndarray(af::sparseGetValues(src)),
                         innerIndices, outerIndices),
-        std::make_pair(src.dims(0), src.dism(1))
+        std::make_pair(src.dims(0), src.dims(1))
       ).release();
     }
     else { // dense array
-      std::vector<dim_t> shape(src.ndims());
-      for (int i = 0; i < src.ndims(); ++i) {
+      std::vector<dim_t> shape(src.dims().ndims());
+      for (int i = 0; i < src.dims().ndims(); ++i) {
         shape[i] = src.dims(i);
       }
-      return afarray2ndarray(src.T()).resize(shape).release();
+      auto res = afarray2ndarray(src.T());
+      res.resize(shape); // what if ndims == 1?
+      return res.release();
     }
   }
 }; // struct type_caster<af::array>

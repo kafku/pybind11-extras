@@ -5,7 +5,7 @@
 from setuptools import setup
 from distutils.command.install_headers import install_headers
 from distutils.command.build_py import build_py
-from pybind11 import __version__
+from pybind11_extras import __version__
 import os
 
 package_data = [
@@ -54,6 +54,9 @@ setup(
     url='https://github.com/kafku/pybind11-extras',
     download_url='https://github.com/kafku/pybind11-extras/tarball/v' + __version__,
     packages=['pybind11_extras'],
+    install_requires=[
+        'pybind11>=2.2.4'
+    ],
     license='BSD',
     headers=headers,
     zip_safe=False,

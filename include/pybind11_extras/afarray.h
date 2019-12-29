@@ -251,11 +251,20 @@ template <> struct type_caster<af::array> {
           throw std::invalid_argument("unsupported af::dtype");
       }
 
-      return matrix_type(
-        std::make_tuple(afarray2ndarray(af::sparseGetValues(src)),
-                        innerIndices, outerIndices),
-        std::make_pair(src.dims(0), src.dims(1))
-      ).release();
+      if (src_storage_type == AF_STORAGE_COO) {
+        return matrix_type(
+          make_tuple(afarray2ndarray(af::sparseGetValues(src)),
+                     make_tuple(innerIndices, outerIndices)),
+          std::make_pair(src.dims(0), src.dims(1))
+        ).release();
+      }
+      else {
+        return matrix_type(
+          std::make_tuple(afarray2ndarray(af::sparseGetValues(src)),
+                          innerIndices, outerIndices),
+          std::make_pair(src.dims(0), src.dims(1))
+        ).release();
+      }
     }
     else { // dense array
       std::vector<dim_t> shape(src.dims().ndims());

@@ -27,6 +27,7 @@
 
 
 #include <arrayfire.h>
+#include <af/internal.h>
 
 NAMESPACE_BEGIN(PYBIND11_NAMESPACE)
 NAMESPACE_BEGIN(detail)
@@ -110,8 +111,54 @@ dtype af_dtype2np_dtype(const af::dtype& src_dtype) {
   }
 }
 
+int af_dtype2bytes(const af::dtype& src_dtype) {
+  switch(src_dtype) {
+    case af::dtype::c64:
+      return 16;
+    case af::dtype::f64:
+    case af::dtype::s64:
+    case af::dtype::u64:
+    case af::dtype::c32:
+      return 8;
+    case af::dtype::f32:
+    case af::dtype::s32:
+    case af::dtype::u32:
+      return 4;
+    case af::dtype::s16:
+    case af::dtype::u16:
+    //case af::dtype::f16:
+      return 2;
+    case af::dtype::u8:
+    case af::dtype::b8:
+    //case af::dtype::s8
+      return 1;
+    default:
+      throw std::invalid_argument("unsupported af::dtype");
+  }
+}
+
 array afarray2ndarray(const af::array& src) {
-  array host_data(af_dtype2np_dtype(src.type()), src.elements());
+  // get shape
+  std::vector<dim_t> shape(src.dims().ndims());
+  for (int i = 0; i < src.dims().ndims(); ++i) {
+    shape[i] = src.dims(i);
+  }
+
+  // get strides
+  const auto bytes = af_dtype2bytes(src.type());
+  const af::dim4 src_strides = af::getStrides(src);
+  std::cout << "afarray2ndarray strides: " << src_strides << std::endl;
+  std::cout << "       src.dims().ndims: " << src.dims().ndims() << std::endl;
+  std::cout << "      src_strides.ndims: " << src_strides.ndims() << std::endl;
+  std::vector<dim_t> strides(src.dims().ndims());
+  for (int i = 0; i < src.dims().ndims(); ++i) {
+    //NOTE: strides in arrayfire are pointer-based
+    //      while those of numpy are byte-based
+    strides[i] = src_strides[i] * bytes;
+  }
+
+  // prepare array on host memory
+  array host_data(af_dtype2np_dtype(src.type()), shape, strides);
 
   try {
     src.host(host_data.mutable_data());
@@ -142,18 +189,28 @@ template <> struct type_caster<af::array> {
       if (!buf)
           return false;
 
-      af::dim4 shape;
+      af::dim4 shape(1);
       for (int i = 0; i < buf.ndim(); ++i) {
-        shape[i] = buf.shape(buf.ndim() - i - 1);
+        shape[i] = buf.shape(i);
       }
 
-      af_array inArray = 0;
-      af_err __err = af_create_array(&inArray, buf.data(), buf.ndim(), shape.get(),
-                                     np_dtype2af_dtype(buf.dtype()));
-      if(__err != AF_SUCCESS)
-        return false;
+      af::dim4 strides(1);
+      const auto dst_af_dtype = np_dtype2af_dtype(buf.dtype());
+      const auto bytes = af_dtype2bytes(dst_af_dtype);
+      for (int i = 0; i < buf.ndim(); ++i) {
+        //NOTE: strides in arrayfire are pointer-based
+        //      while those of numpy are byte-based
+        strides[i] = buf.strides(i) / bytes;
+      }
 
-      value = af::array(inArray).T(); // FIXME: what if ndim == 1??
+      try {
+        value = af::createStridedArray(buf.data(), 0, shape, strides,
+                                       dst_af_dtype, afHost);
+      }
+      catch (af::exception &e) {
+        std::cerr << e << std::endl;
+        return false;
+      }
     }
     else if (isinstance(src, spmatrix)) { // scipy.sparse.base.spmatrix
       // modules
@@ -267,12 +324,7 @@ template <> struct type_caster<af::array> {
       }
     }
     else { // dense array
-      std::vector<dim_t> shape(src.dims().ndims());
-      for (int i = 0; i < src.dims().ndims(); ++i) {
-        shape[i] = src.dims(i);
-      }
-      auto res = afarray2ndarray(src.T());
-      res.resize(shape); // what if ndims == 1?
+      auto res = afarray2ndarray(src);
       return res.release();
     }
   }

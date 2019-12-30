@@ -209,20 +209,15 @@ template <> struct type_caster<af::array> {
         strides[i] = buf.strides(is_fortran? i : buf.ndim() - i - 1) / bytes;
       }
 
+      std::cout << "load()  shape: " << shape << std::endl;
+      std::cout << "load()  strides: " << strides << std::endl;
       std::cout << "ndarray ptr: " << (long long) buf.data() << std::endl;
       try {
         value = af::createStridedArray(buf.data(), 0, shape, strides,
                                        dst_af_dtype, afHost);
 
-        if (!is_fortran) {
-          if (buf.ndim() == 2 && shape[0] == shape[1]) {
-            // cf. https://github.com/arrayfire/arrayfire/blob/6456de19960bd91b6fc05cfcbcb4c1e4f8b07d10/src/api/c/transpose.cpp#L90
-            af::transposeInPlace(value);
-          }
-          else {
-            value = value.T();
-          }
-        }
+        if (!is_fortran)
+          value = value.T();
       }
       catch (af::exception &e) {
         std::cerr << e << std::endl;

@@ -189,10 +189,22 @@ template <> struct type_caster<af::array> {
       if (!buf)
           return false;
 
+      const auto dst_af_dtype = np_dtype2af_dtype(buf.dtype());
+      const auto bytes = af_dtype2bytes(dst_af_dtype);
       const bool is_f_style = (array::f_style == (buf.flags() & array::f_style));
       const bool is_c_style = (array::c_style == (buf.flags() & array::c_style));
-      const bool is_fortran = is_f_style & !is_c_style;
-      // FIXME: what if is_f_style == false && is_c_style == false, which may leads to failure
+      bool is_fortran = is_f_style & !is_c_style;
+      if (!is_f_style && !is_c_style) {
+        if (buf.strides(0) / bytes == 1) {
+          is_fortran = true;
+        }
+        else if (buf.strides(buf.ndim() - 1) / bytes == 1) {
+          is_fortran = false;
+        }
+        else {
+          throw std::invalid_argument("unsupporeted strides");
+        }
+      }
 
       // cf. https://github.com/arrayfire/arrayfire/blob/70ef19897e4cf639dd720f3083dd2c6c522ff076/src/api/c/internal.cpp#L43
       af::dim4 shape(1);
@@ -201,8 +213,6 @@ template <> struct type_caster<af::array> {
       }
 
       af::dim4 strides(1);
-      const auto dst_af_dtype = np_dtype2af_dtype(buf.dtype());
-      const auto bytes = af_dtype2bytes(dst_af_dtype);
       for (int i = 0; i < buf.ndim(); ++i) {
         //NOTE: strides in arrayfire are pointer-based
         //      while those of numpy are byte-based
@@ -210,8 +220,11 @@ template <> struct type_caster<af::array> {
       }
 
       std::cout << "load()  shape: " << shape << std::endl;
+      std::cout << "        ndim: " << shape.ndims() << std::endl;
       std::cout << "load()  strides: " << strides << std::endl;
+      std::cout << "        ndim: " << strides.ndims() << std::endl;
       std::cout << "ndarray ptr: " << (long long) buf.data() << std::endl;
+      std::cout << "is_fortran : " << is_fortran << std::endl;
       try {
         value = af::createStridedArray(buf.data(), 0, shape, strides,
                                        dst_af_dtype, afHost);

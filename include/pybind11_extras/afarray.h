@@ -189,9 +189,10 @@ template <> struct type_caster<af::array> {
       if (!buf)
           return false;
 
-      const bool is_fortran = (array::f_style == (buf.flags() & array::f_style))
-        & (array::c_style != (buf.flags() & array::c_style));
-      std::cout << "is F-style?: " << is_fortran << std::endl;
+      const bool is_f_style = (array::f_style == (buf.flags() & array::f_style));
+      const bool is_c_style = (array::c_style == (buf.flags() & array::c_style));
+      const bool is_fortran = is_f_style & !is_c_style;
+      // FIXME: what if is_f_style == false && is_c_style == false, which may leads to failure
 
       // cf. https://github.com/arrayfire/arrayfire/blob/70ef19897e4cf639dd720f3083dd2c6c522ff076/src/api/c/internal.cpp#L43
       af::dim4 shape(1);

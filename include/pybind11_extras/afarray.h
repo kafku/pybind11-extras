@@ -189,10 +189,14 @@ template <> struct type_caster<af::array> {
       if (!buf)
           return false;
 
+      const bool is_fortran = (array::f_style == (buf.flags() & array::f_style))
+        & (array::c_style != (buf.flags() & array::c_style));
+      std::cout << "is F-style?: " << is_fortran << std::endl;
+
       // cf. https://github.com/arrayfire/arrayfire/blob/70ef19897e4cf639dd720f3083dd2c6c522ff076/src/api/c/internal.cpp#L43
       af::dim4 shape(1);
       for (int i = 0; i < buf.ndim(); ++i) {
-        shape[i] = buf.shape(buf.ndim() - i - 1);
+        shape[i] = buf.shape(is_fortran? i : buf.ndim() - i - 1);
       }
 
       af::dim4 strides(1);
@@ -201,19 +205,22 @@ template <> struct type_caster<af::array> {
       for (int i = 0; i < buf.ndim(); ++i) {
         //NOTE: strides in arrayfire are pointer-based
         //      while those of numpy are byte-based
-        strides[i] = buf.strides(buf.ndim() - i - 1) / bytes;
+        strides[i] = buf.strides(is_fortran? i : buf.ndim() - i - 1) / bytes;
       }
 
       std::cout << "ndarray ptr: " << (long long) buf.data() << std::endl;
       try {
         value = af::createStridedArray(buf.data(), 0, shape, strides,
                                        dst_af_dtype, afHost);
-        if (buf.ndim() == 2 && shape[0] == shape[1]) {
-          // cf. https://github.com/arrayfire/arrayfire/blob/6456de19960bd91b6fc05cfcbcb4c1e4f8b07d10/src/api/c/transpose.cpp#L90
-          af::transposeInPlace(value);
-        }
-        else {
-          value = value.T();
+
+        if (!is_fortran) {
+          if (buf.ndim() == 2 && shape[0] == shape[1]) {
+            // cf. https://github.com/arrayfire/arrayfire/blob/6456de19960bd91b6fc05cfcbcb4c1e4f8b07d10/src/api/c/transpose.cpp#L90
+            af::transposeInPlace(value);
+          }
+          else {
+            value = value.T();
+          }
         }
       }
       catch (af::exception &e) {

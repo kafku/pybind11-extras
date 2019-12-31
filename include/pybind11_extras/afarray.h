@@ -147,23 +147,10 @@ array afarray2ndarray(const af::array& src) {
   // get strides
   const auto bytes = af_dtype2bytes(src.type());
   const af::dim4 src_strides = af::getStrides(src);
-  std::cout << "afarray2ndarray" << std::endl;
-  std::cout << "            src_strides: " << src_strides << std::endl;
-  std::cout << "             src.dims(): " << src.dims() << std::endl;
-  std::cout << "       src.dims().ndims: " << src.dims().ndims() << std::endl;
-  std::cout << "      src_strides.ndims: " << src_strides.ndims() << std::endl;
-  std::cout << "         src.elements(): " << src.elements() << std::endl;
-  std::cout << "            src.bytes(): " << src.bytes() << std::endl;
   std::vector<dim_t> strides(src.dims().ndims());
   strides[0] = 1;
   for (int i = 0; i < src.dims().ndims() - 1; ++i)
     strides[i + 1] =  strides[i] * src.dims(i);
-
-  std::cout << "          fixed strides: ";
-  for (auto& s : strides) {
-    std::cout << s << " ";
-  }
-  std::cout << std::endl;
 
   for (auto& s : strides) {
     //NOTE: strides in arrayfire are pointer-based
@@ -236,12 +223,6 @@ template <> struct type_caster<af::array> {
         strides[i] = buf.strides(is_fortran? i : buf.ndim() - i - 1) / bytes;
       }
 
-      std::cout << "load()  shape: " << shape << std::endl;
-      std::cout << "        ndim: " << shape.ndims() << std::endl;
-      std::cout << "load()  strides: " << strides << std::endl;
-      std::cout << "        ndim: " << strides.ndims() << std::endl;
-      std::cout << "ndarray ptr: " << (long long) buf.data() << std::endl;
-      std::cout << "is_fortran : " << is_fortran << std::endl;
       try {
         value = af::createStridedArray(buf.data(), 0, shape, strides,
                                        dst_af_dtype, afHost);

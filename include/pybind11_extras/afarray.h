@@ -38,10 +38,10 @@ af::dtype np_dtype2af_dtype(const dtype& src_dtype) {
     return af::dtype::f64;
   else if (dtype_str == "float32")
     return af::dtype::f32;
-  // float16 is not supported in arrayfire <= 3.6.4
-  // cf. https://github.com/arrayfire/arrayfire/issues/1673
-  //else if(dtype_str == "float16")
-  //  return af::dtype::f16;
+#if AF_API_VERSION >= 37
+  else if(dtype_str == "float16")
+    return af::dtype::f16;
+#endif
   else if (dtype_str == "int64")
     return af::dtype::s64;
   else if (dtype_str == "uint64")
@@ -77,10 +77,10 @@ dtype af_dtype2np_dtype(const af::dtype& src_dtype) {
       return dtype("float64");
     case af::dtype::f32:
       return dtype("float32");
-    // float16 is not supported in arrayfire <= 3.6.4
-    // cf. https://github.com/arrayfire/arrayfire/issues/1673
-    //case af::dtype::f16:
-    //  return dtype("float16");
+#if AF_API_VERSION >= 37
+    case af::dtype::f16:
+      return dtype("float16");
+#endif
     case af::dtype::s64:
       return dtype("int64");
     case af::dtype::u64:
@@ -126,7 +126,9 @@ int af_dtype2bytes(const af::dtype& src_dtype) {
       return 4;
     case af::dtype::s16:
     case af::dtype::u16:
-    //case af::dtype::f16:
+#if AF_API_VERSION >= 37
+    case af::dtype::f16:
+#endif
       return 2;
     case af::dtype::u8:
     case af::dtype::b8:

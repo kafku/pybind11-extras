@@ -203,6 +203,9 @@ template <> struct type_caster<af::array> {
       if (!buf)
           return false;
 
+      if (buf.ndim() > 4)
+        std::invalid_argument("ndim must be less than or equal to 4");
+
       const auto dst_af_dtype = np_dtype2af_dtype(buf.dtype());
       const auto bytes = af_dtype2bytes(dst_af_dtype);
       const bool is_f_style = (array::f_style == (buf.flags() & array::f_style));
@@ -243,8 +246,14 @@ template <> struct type_caster<af::array> {
         value = af::createStridedArray(buf.data(), 0, shape, strides,
                                        dst_af_dtype, afHost);
 
-        if (!is_fortran)
-          value = value.T();
+        if (!is_fortran) {
+          if (buf.ndim() <= 2)
+            value = value.T();
+          else if (buf.ndim() == 3)
+            value = af::reorder(value, 2, 1, 0);
+          else if (buf.ndim() == 4)
+            value = af::reorder(value, 3, 2, 1, 0);
+        }
       }
       catch (af::exception &e) {
         std::cerr << e << std::endl;

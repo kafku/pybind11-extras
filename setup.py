@@ -9,7 +9,7 @@ from pybind11_extras import __version__
 import os
 
 package_data = [
-    'include/pybind11_extras/afarray.h'
+    'include/pybind11-extras/afarray.h'
 ]
 
 # Prevent installation of pybind11 headers by setting
@@ -27,7 +27,7 @@ class InstallHeaders(install_headers):
             return
 
         for header in self.distribution.headers:
-            subdir = os.path.dirname(os.path.relpath(header, 'include/pybind11_extras'))
+            subdir = os.path.dirname(os.path.relpath(header, 'include/pybind11-extras'))
             install_dir = os.path.join(self.install_dir, subdir)
             self.mkpath(install_dir)
 
@@ -76,7 +76,7 @@ setup(
         'Programming Language :: Python :: 3.7',
         'License :: OSI Approved :: BSD License'
     ],
-    keywords='C++11, Python bindings, pybidn11, arrayfire',
+    keywords='C++11, Python bindings, pybind11, arrayfire',
     long_description="""
 
     """)

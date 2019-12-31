@@ -3,7 +3,7 @@
 ## Supported types
 
 - [ArrayFire](https://github.com/arrayfire/arrayfire)
-  - `af::array`
+  - `af::array`, `af::dim4`
 
 ## Installation
 

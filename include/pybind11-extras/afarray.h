@@ -360,6 +360,52 @@ template <> struct type_caster<af::array> {
 }; // struct type_caster<af::array>
 
 
+// type_caster for af::dim4
+template <> struct type_caster<af::dim4> {
+  PYBIND11_TYPE_CASTER(af::dim4, _("af::dim4"));
+
+  bool load(handle src, bool convert) {
+    value = af::dim4(1);
+
+    if (isinstance<tuple>(src)) {
+      const int ndims = len(src);
+      if (ndims > 4)
+        return false;
+      tuple t = reinterpret_borrow<tuple>(src);
+      for (int i = 0; i < ndims; ++i)
+        value[i] = t[i].cast<dim_t>();
+    }
+    else if (isinstance<list>(src)) {
+      const int ndims = len(src);
+      if (ndims > 4)
+        return false;
+      list l = reinterpret_borrow<list>(src);
+      for (int i = 0; i < ndims; ++i)
+        value[i] = l[i].cast<dim_t>();
+    }
+    else {
+      return false;
+    }
+
+    return true;
+  }
+
+  static handle cast(const af::dim4 &src, return_value_policy, handle) {
+    switch (src.ndims()) {
+      case 1:
+        return make_tuple(int_((int) src[0])).release();
+      case 2:
+        return make_tuple(src[0], src[1]).release();
+      case 3:
+        return make_tuple(src[0], src[1], src[2]).release();
+      case 4:
+        return make_tuple(src[0], src[1], src[2], src[3]).release();
+      default:
+        return make_tuple().release();
+    }
+  }
+}; // struct type_caster<af::dim4>
+
 NAMESPACE_END(detail)
 NAMESPACE_END(PYBIND11_NAMESPACE)
 

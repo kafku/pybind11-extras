@@ -27,6 +27,7 @@
 
 
 #include <arrayfire.h>
+#include <af/internal.h>
 
 NAMESPACE_BEGIN(PYBIND11_NAMESPACE)
 NAMESPACE_BEGIN(detail)
@@ -110,8 +111,55 @@ dtype af_dtype2np_dtype(const af::dtype& src_dtype) {
   }
 }
 
+int af_dtype2bytes(const af::dtype& src_dtype) {
+  switch(src_dtype) {
+    case af::dtype::c64:
+      return 16;
+    case af::dtype::f64:
+    case af::dtype::s64:
+    case af::dtype::u64:
+    case af::dtype::c32:
+      return 8;
+    case af::dtype::f32:
+    case af::dtype::s32:
+    case af::dtype::u32:
+      return 4;
+    case af::dtype::s16:
+    case af::dtype::u16:
+    //case af::dtype::f16:
+      return 2;
+    case af::dtype::u8:
+    case af::dtype::b8:
+    //case af::dtype::s8
+      return 1;
+    default:
+      throw std::invalid_argument("unsupported af::dtype");
+  }
+}
+
 array afarray2ndarray(const af::array& src) {
-  array host_data(af_dtype2np_dtype(src.type()), src.elements());
+  // get shape
+  std::vector<dim_t> shape(src.dims().ndims());
+  for (int i = 0; i < src.dims().ndims(); ++i) {
+    shape[i] = src.dims(i);
+  }
+
+  // get strides
+  const auto bytes = af_dtype2bytes(src.type());
+  const af::dim4 src_strides = af::getStrides(src);
+  std::vector<dim_t> strides(src.dims().ndims());
+  strides[0] = 1;
+  for (int i = 0; i < src.dims().ndims() - 1; ++i)
+    strides[i + 1] =  strides[i] * src.dims(i);
+
+  for (auto& s : strides) {
+    //NOTE: strides in arrayfire are pointer-based
+    //      while those of numpy are byte-based
+    s *= bytes;
+  }
+
+  // prepare array on host memory
+  array host_data(af_dtype2np_dtype(src.type()), shape, strides);
 
   try {
     src.host(host_data.mutable_data());
@@ -142,18 +190,56 @@ template <> struct type_caster<af::array> {
       if (!buf)
           return false;
 
-      af::dim4 shape;
-      for (int i = 0; i < buf.ndim(); ++i) {
-        shape[i] = buf.shape(buf.ndim() - i - 1);
+      if (buf.ndim() > 4)
+        std::invalid_argument("ndim must be less than or equal to 4");
+
+      const auto dst_af_dtype = np_dtype2af_dtype(buf.dtype());
+      const auto bytes = af_dtype2bytes(dst_af_dtype);
+      const bool is_f_style = (array::f_style == (buf.flags() & array::f_style));
+      const bool is_c_style = (array::c_style == (buf.flags() & array::c_style));
+      bool is_fortran = is_f_style & !is_c_style;
+      if (!is_f_style && !is_c_style) {
+        if (buf.strides(0) / bytes == 1) {
+          is_fortran = true;
+        }
+        else if (buf.strides(buf.ndim() - 1) / bytes == 1) {
+          is_fortran = false;
+        }
+        else {
+          throw std::invalid_argument("unsupporeted strides");
+        }
       }
 
-      af_array inArray = 0;
-      af_err __err = af_create_array(&inArray, buf.data(), buf.ndim(), shape.get(),
-                                     np_dtype2af_dtype(buf.dtype()));
-      if(__err != AF_SUCCESS)
-        return false;
+      // cf. https://github.com/arrayfire/arrayfire/blob/70ef19897e4cf639dd720f3083dd2c6c522ff076/src/api/c/internal.cpp#L43
+      af::dim4 shape(1);
+      for (int i = 0; i < buf.ndim(); ++i) {
+        shape[i] = buf.shape(is_fortran? i : buf.ndim() - i - 1);
+      }
 
-      value = af::array(inArray).T(); // FIXME: what if ndim == 1??
+      af::dim4 strides(1);
+      for (int i = 0; i < buf.ndim(); ++i) {
+        //NOTE: strides in arrayfire are pointer-based
+        //      while those of numpy are byte-based
+        strides[i] = buf.strides(is_fortran? i : buf.ndim() - i - 1) / bytes;
+      }
+
+      try {
+        value = af::createStridedArray(buf.data(), 0, shape, strides,
+                                       dst_af_dtype, afHost);
+
+        if (!is_fortran) {
+          if (buf.ndim() <= 2)
+            value = value.T();
+          else if (buf.ndim() == 3)
+            value = af::reorder(value, 2, 1, 0);
+          else if (buf.ndim() == 4)
+            value = af::reorder(value, 3, 2, 1, 0);
+        }
+      }
+      catch (af::exception &e) {
+        std::cerr << e << std::endl;
+        return false;
+      }
     }
     else if (isinstance(src, spmatrix)) { // scipy.sparse.base.spmatrix
       // modules
@@ -267,12 +353,7 @@ template <> struct type_caster<af::array> {
       }
     }
     else { // dense array
-      std::vector<dim_t> shape(src.dims().ndims());
-      for (int i = 0; i < src.dims().ndims(); ++i) {
-        shape[i] = src.dims(i);
-      }
-      auto res = afarray2ndarray(src.T());
-      res.resize(shape); // what if ndims == 1?
+      auto res = afarray2ndarray(src);
       return res.release();
     }
   }

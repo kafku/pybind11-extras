@@ -5,6 +5,7 @@
 - [ArrayFire](https://github.com/arrayfire/arrayfire)
   - [x] `af::array`
   - [x] `af::dim4`
+- [Armadillo](http://arma.sourceforge.net)
 
 ## Installation
 
